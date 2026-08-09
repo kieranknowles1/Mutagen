@@ -446,14 +446,13 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
             .MergeInsert(true);
     }
 
-    private VoiceContainer GetVoices(IConditionGetter condition, IQuestGetter quest, ModKey currentMod)
+    /// <summary>
+    /// Get allowed voices for a condition's data. Does not account for comparision operators/values. Assumes condition runs on the speaker.
+    /// Returns VoiceContainer.Default if the condition does not filter speakers
+    /// </summary>
+    /// <returns></returns>
+    private VoiceContainer GetConditionDataSpeakers(IConditionDataGetter data, IQuestGetter quest, ModKey currentMod)
     {
-        var voices = new VoiceContainer();
-
-        var data = condition.Data;
-
-        if (data.RunOnType != Condition.RunOnType.Subject) return new VoiceContainer(true);
-
         switch (data)
         {
             case IGetIsIDConditionDataGetter getIsId:
@@ -462,7 +461,7 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
                     var getIsIdFormKey = getIsId.Object.Link.FormKey;
                     if (_speakerVoices.TryGetValue(getIsIdFormKey, out var idVoices))
                     {
-                        voices = new VoiceContainer(getIsIdFormKey, idVoices);
+                        return new VoiceContainer(getIsIdFormKey, idVoices);
                     }
                 }
 
@@ -473,10 +472,10 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
                     switch (voiceTypeRecord)
                     {
                         case IVoiceTypeGetter voiceType when voiceType.EditorID != null:
-                            voices = new VoiceContainer(voiceType.EditorID);
+                            return new VoiceContainer(voiceType.EditorID);
                             break;
                         case IFormListGetter formList:
-                            voices = new VoiceContainer(formList.Items.SelectWhere(link =>
+                            return new VoiceContainer(formList.Items.SelectWhere(link =>
                             {
                                 _formLinkCache.TryResolveIdentifier<IVoiceTypeGetter>(link.FormKey, out var linkVoiceTypeEditorId);
                                 return linkVoiceTypeEditorId == null ? TryGet<string>.Failure : TryGet<string>.Succeed(linkVoiceTypeEditorId);
@@ -487,13 +486,11 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
 
                 break;
             case IGetIsAliasRefConditionDataGetter aliasRef:
-                voices = GetVoices(quest, aliasRef.ReferenceAliasIndex, currentMod);
-
-                break;
+                return GetVoices(quest, aliasRef.ReferenceAliasIndex, currentMod);
             case IGetInFactionConditionDataGetter getInFaction:
                 if (getInFaction.Faction.UsesLink() && _factionNPCs.TryGetValue(getInFaction.Faction.Link.FormKey, out var factionNpcFormKeys))
                 {
-                    voices = new VoiceContainer(factionNpcFormKeys.ToDictionary(npc => npc, GetVoiceTypes));
+                    return new VoiceContainer(factionNpcFormKeys.ToDictionary(npc => npc, GetVoiceTypes));
                 }
 
                 break;
@@ -501,28 +498,28 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
                 // Assume the actor can be in any rank as long they are in the faction - they might shift ranks later on
                 if (getFactionRank.Faction.UsesLink() && _factionNPCs.TryGetValue(getFactionRank.Faction.Link.FormKey, out var factionNpcFormKeys2))
                 {
-                    voices = new VoiceContainer(factionNpcFormKeys2.ToDictionary(npc => npc, GetVoiceTypes));
+                    return new VoiceContainer(factionNpcFormKeys2.ToDictionary(npc => npc, GetVoiceTypes));
                 }
 
                 break;
             case IGetIsClassConditionDataGetter getIsClass:
                 if (getIsClass.Class.UsesLink() && _classNPCs.TryGetValue(getIsClass.Class.Link.FormKey, out var classNpcFormKeys))
                 {
-                    voices = new VoiceContainer(classNpcFormKeys.ToDictionary(npc => npc, GetVoiceTypes));
+                    return new VoiceContainer(classNpcFormKeys.ToDictionary(npc => npc, GetVoiceTypes));
                 }
 
                 break;
             case IGetIsRaceConditionDataGetter getIsRace:
                 if (getIsRace.Race.UsesLink() && _raceNPCs.TryGetValue(getIsRace.Race.Link.FormKey, out var raceNpcFormKeys))
                 {
-                    voices = new VoiceContainer(raceNpcFormKeys.ToDictionary(npc => npc, GetVoiceTypes));
+                    return new VoiceContainer(raceNpcFormKeys.ToDictionary(npc => npc, GetVoiceTypes));
                 }
 
                 break;
             case IGetIsSexConditionDataGetter sexConditionDataGetter:
                 if (_genderNPCs.TryGetValue(sexConditionDataGetter.MaleFemaleGender, out var genderNpcFormKeys))
                 {
-                    voices = new VoiceContainer(genderNpcFormKeys.ToDictionary(npc => npc, GetVoiceTypes));
+                    return new VoiceContainer(genderNpcFormKeys.ToDictionary(npc => npc, GetVoiceTypes));
                 }
 
                 break;
@@ -531,50 +528,59 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
                 {
                     var formList = isInList.FormList.Link.TryResolve(_formLinkCache);
                     //Only look at speakers in the form list
-                    if (formList != null) voices = formList.Items.Select(link => GetVoices(link.FormKey)).MergeInsert(false);
+                    if (formList != null) return formList.Items.Select(link => GetVoices(link.FormKey)).MergeInsert(false);
                 }
 
                 break;
             case IIsChildConditionDataGetter isChild:
-                voices = new VoiceContainer(_childNPCs.ToDictionary(npc => npc, GetVoiceTypes));
-
-                break;
+                return new VoiceContainer(_childNPCs.ToDictionary(npc => npc, GetVoiceTypes));
             default:
-                voices = new VoiceContainer(true);
-                break;
-        }
-
-        if (!voices.IsDefault && !IsConditionValid(condition))
-        {
-            //Can't invert alias according to CK calculation
-            if (data.Function == Condition.Function.GetIsAliasRef)
-            {
+                // Condition does not filter by voice type
                 return new VoiceContainer(true);
-            }
+        }
+        // TODO: If we're here, the condition should have filtered but could not. Should this return an empty voice container?
+        return new VoiceContainer(true);
+    }
 
-            voices = Invert(voices, data.Function == Condition.Function.GetIsVoiceType, currentMod);
+    private VoiceContainer GetVoices(IConditionGetter condition, IQuestGetter quest, ModKey currentMod)
+    {
+        var data = condition.Data;
+        if (data.RunOnType != Condition.RunOnType.Subject) return new VoiceContainer(true);
+
+        var voices = GetConditionDataSpeakers(data, quest, currentMod);
+        if (voices.IsDefault)
+            return voices;
+
+        if (IsConditionNegated(condition))
+        {
+            // Special case: don't exclude an inverted alias. Alias references may change throughout the quest
+            if (data is IGetIsAliasRefConditionDataGetter)
+                return new VoiceContainer(true);
+            // If we're inverting a GetIsVoiceType condition then we should return the set of speakers with default voices other than the excluded voice types
+            // TODO: Do we want to return all default voice speakers except this set instead?
+            return Invert(voices, data is IGetIsVoiceTypeConditionDataGetter, currentMod);
         }
 
         return voices;
     }
 
-    private bool IsConditionValid(IConditionGetter condition)
+    private bool IsConditionNegated(IConditionGetter condition)
     {
         const double floatTolerance = 0.001;
 
-        bool FloatEquals(float value, int expected) => Math.Abs(value - expected) < floatTolerance;
+        bool FloatEquals(float value, int expected) => Math.Abs(value - expected) > floatTolerance;
 
         bool GlobalEquals(ILink<IGlobalGetter> global, int expected)
         {
             var globalValue = global.TryResolve(_formLinkCache);
-            if (globalValue == null) return false;
+            if (globalValue == null) return true;
 
             return globalValue switch
             {
-                IGlobalFloatGetter globalFloat => globalFloat.Data != null && Math.Abs(globalFloat.Data.Value - expected) < floatTolerance,
-                IGlobalIntGetter globalInt => globalInt.Data != null && globalInt.Data.Value == expected,
-                IGlobalShortGetter globalShort => globalShort.Data != null && globalShort.Data.Value == expected,
-                _ => false
+                IGlobalFloatGetter globalFloat => globalFloat.Data != null && Math.Abs(globalFloat.Data.Value - expected) > floatTolerance,
+                IGlobalIntGetter globalInt => globalInt.Data != null && globalInt.Data.Value != expected,
+                IGlobalShortGetter globalShort => globalShort.Data != null && globalShort.Data.Value != expected,
+                _ => true
             };
         }
 
@@ -585,21 +591,21 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
                 {
                     IConditionFloatGetter floatCondition => FloatEquals(floatCondition.ComparisonValue, 1),
                     IConditionGlobalGetter globalCondition => GlobalEquals(globalCondition.ComparisonValue, 1),
-                    _ => false
+                    _ => true
                 };
             case CompareOperator.NotEqualTo:
                 return condition switch
                 {
                     IConditionFloatGetter floatCondition => FloatEquals(floatCondition.ComparisonValue, 0),
                     IConditionGlobalGetter globalCondition => GlobalEquals(globalCondition.ComparisonValue, 0),
-                    _ => false
+                    _ => true
                 };
             case CompareOperator.GreaterThan:
             case CompareOperator.GreaterThanOrEqualTo:
             case CompareOperator.LessThan:
             case CompareOperator.LessThanOrEqualTo:
             default:
-                return false;
+                return true;
         }
     }
 
