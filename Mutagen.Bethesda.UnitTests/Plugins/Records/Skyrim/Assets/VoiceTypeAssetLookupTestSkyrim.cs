@@ -78,6 +78,16 @@ public class VoiceTypeAssetLookupTestSkyrim
         };
     }
 
+    public ConditionFloat CreateAliasRefCondition(uint id, float value, Condition.Flag flags)
+    {
+        return new ConditionFloat()
+        {
+            Data = new GetIsAliasRefConditionData() { ReferenceAliasIndex = (int)id },
+            ComparisonValue = value,
+            Flags = flags,
+        };
+    }
+
     [Theory, MutagenModAutoData]
     public void TestGetIsId(VoiceTypeAssetLookupTestFixture fixture)
     {
@@ -88,19 +98,12 @@ public class VoiceTypeAssetLookupTestSkyrim
     }
 
     [Theory, MutagenModAutoData]
-    public void TestGetIsAlias(VoiceTypeAssetLookupTestFixture fixture, uint aliasId)
+    public void TestGetIsAliasUniqueActor(VoiceTypeAssetLookupTestFixture fixture, uint aliasId)
     {
         fixture.Run(rec =>
         {
             fixture.Quest.Aliases.Add(new() { ID = aliasId, UniqueActor = fixture.Npc1.ToNullableLink() });
-            rec.Conditions.Add(new ConditionFloat()
-            {
-                Data = new GetIsAliasRefConditionData()
-                {
-                    ReferenceAliasIndex = (int)aliasId,
-                },
-                ComparisonValue = 1,
-            });
+            rec.Conditions.Add(CreateAliasRefCondition(aliasId, 1, 0));
         }, [fixture.Npc1]);
     }
 
@@ -125,61 +128,19 @@ public class VoiceTypeAssetLookupTestSkyrim
     [Theory]
     [MutagenModAutoData]
     public void TestAliasAdditionalVoicesNPCList(
-        SkyrimMod mod,
-        Scene scene,
-        DialogTopic topic,
-        DialogResponse dialogResponse,
-        Quest quest,
-        DialogResponses dialogResponses,
-        VoiceType voiceType,
-        VoiceType voiceType2,
-        Npc npc,
-        Npc npc2,
+        VoiceTypeAssetLookupTestFixture fixture,
         FormList formList,
-        string edid1,
-        string edid2,
         uint aliasId)
     {
-        dialogResponses.Responses.Add(dialogResponse);
-        topic.Responses.Add(dialogResponses);
-        topic.Category = DialogTopic.CategoryEnum.Scene;
-        topic.Quest.SetTo(quest);
-        
-        scene.Actions.Add(new SceneAction()
+        fixture.Run(rec =>
         {
-            Type = SceneAction.TypeEnum.Dialog,
-            Topic = topic.ToNullableLink<IDialogTopicGetter>(),
-            ActorID = (int)aliasId,
-        });
-        
-        voiceType.EditorID = edid1;
-        npc.Voice.SetTo(voiceType);
-        
-        voiceType2.EditorID = edid2;
-        npc2.Voice.SetTo(voiceType2);
-        
-        formList.Items.Add(npc);
-        formList.Items.Add(npc2);
-        
-        var alias = new QuestAlias()
-        {
-            ID = aliasId
-        };
-        alias.VoiceTypes.SetTo(formList);
-        quest.Aliases.Add(alias);
-        
-        var linkCache = mod.ToImmutableLinkCache();
-        var sut = new VoiceTypeAssetLookup();
-        sut.Prep(linkCache.CreateImmutableAssetLinkCache());
-        
-        Assert.Equal(
-            new VoiceContainer(new HashSet<string>
-            {
-                edid1,
-                edid2
-            }),
-            sut.GetVoicesWithQuest(topic, dialogResponses)
-        );
+            formList.Items.Add(fixture.Npc1.Voice);
+            formList.Items.Add(fixture.Npc2.Voice);
+
+            fixture.Quest.Aliases.Add(new() { ID = aliasId, VoiceTypes = formList.ToNullableLink() });
+            rec.Conditions.Add(CreateAliasRefCondition(aliasId, 1, 0));
+
+        }, [fixture.Npc1, fixture.Npc2]);
     }
 
     [Fact]
