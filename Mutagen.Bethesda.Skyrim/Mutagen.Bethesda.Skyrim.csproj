@@ -91,6 +91,7 @@
     <Compile Include="Enums\WeaponAnimationType.cs" />
     <Compile Include="Enums\Emotion.cs" />
     <Compile Include="Extensions\CellGroupExt.cs" />
+    <Compile Include="Extensions\ConditionExtensions.cs" />
     <Compile Include="Extensions\GameSettingGroupMixIn.cs" />
     <Compile Include="Extensions\GlobalGroupMixIn.cs" />
     <Compile Include="Extensions\IPlacedExt.cs" />

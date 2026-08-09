@@ -3,6 +3,7 @@ using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Assets;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Records;
+using Mutagen.Bethesda.Skyrim.Extensions;
 using Noggog;
 namespace Mutagen.Bethesda.Skyrim.Records.Assets.VoiceType;
 
@@ -421,32 +422,18 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
 
     private VoiceContainer GetVoices(IEnumerable<IConditionGetter> conditions, IQuestGetter quest, ModKey currentMod)
     {
-        var voiceTypesOrBlock = new List<VoiceContainer>();
-        var currentConditions = new List<IConditionGetter>();
+        if (!conditions.Any())
+            return new VoiceContainer(true);
 
-        //Calculate OR blocks
-        var conditionsList = conditions.ToList();
-        for (var i = 0; i < conditionsList.Count; i++)
-        {
-            var condition = conditionsList[i];
-            currentConditions.Add(condition);
-
-            //At every new AND or at the end of the conditions, finish the current block
-            if ((condition.Flags & Condition.Flag.OR) == 0 || i == conditionsList.Count - 1)
-            {
-                var voices = GetVoiceTypesOrBlock(currentConditions, quest, currentMod);
-                if (!voices.IsDefault) voiceTypesOrBlock.Add(voices);
-
-                currentConditions.Clear();
-            }
-        }
-
-        //Merge OR blocks
-        return voiceTypesOrBlock.Any() ? voiceTypesOrBlock.MergeIntersect() : new VoiceContainer(true);
+        // Allowed speakers by block. The set of valid speakers is the intersection of all OR block speakers
+        var speakerBlocks = conditions.SplitOrBlocks()
+            .Select(block => GetVoiceTypesOrBlock(block, quest, currentMod));
+        return speakerBlocks.MergeIntersect();
     }
 
     private VoiceContainer GetVoiceTypesOrBlock(IEnumerable<IConditionGetter> conditions, IQuestGetter quest, ModKey currentMod)
     {
+        // Allowd speakers of block. The set of speakers in an OR block is the union of all conditions
         return conditions
             .Select(condition =>
             {
