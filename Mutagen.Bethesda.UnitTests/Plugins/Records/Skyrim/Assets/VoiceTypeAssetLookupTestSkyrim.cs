@@ -50,11 +50,11 @@ public class VoiceTypeAssetLookupTestFixture
         Quest = quest;
     }
 
-    public void Run(Action<DialogResponses> prep, IEnumerable<INpcGetter> expectedSpeakers)
+    public void AssertSpeakersEqual(IEnumerable<Condition> conditions, IEnumerable<INpcGetter> expectedSpeakers)
     {
         var rec = _fixture.Create<DialogResponses>();
         Topic.Responses.Add(rec);
-        prep(rec);
+        rec.Conditions.AddRange(conditions);
 
         var lookup = new VoiceTypeAssetLookup();
         lookup.Prep(LinkCache.CreateImmutableAssetLinkCache());
@@ -91,20 +91,18 @@ public class VoiceTypeAssetLookupTestSkyrim
     [Theory, MutagenModAutoData]
     public void TestGetIsId(VoiceTypeAssetLookupTestFixture fixture)
     {
-        fixture.Run(rec =>
-        {
-            rec.Conditions.Add(CreateIdCondition(fixture.Npc1, 1, 0));
-        }, [fixture.Npc1]);
+        fixture.AssertSpeakersEqual(
+            [CreateIdCondition(fixture.Npc1, 1, 0)],
+            [fixture.Npc1]);
     }
 
     [Theory, MutagenModAutoData]
     public void TestGetIsAliasUniqueActor(VoiceTypeAssetLookupTestFixture fixture, uint aliasId)
     {
-        fixture.Run(rec =>
-        {
-            fixture.Quest.Aliases.Add(new() { ID = aliasId, UniqueActor = fixture.Npc1.ToNullableLink() });
-            rec.Conditions.Add(CreateAliasRefCondition(aliasId, 1, 0));
-        }, [fixture.Npc1]);
+        fixture.Quest.Aliases.Add(new() { ID = aliasId, UniqueActor = fixture.Npc1.ToNullableLink() });
+        fixture.AssertSpeakersEqual(
+            [CreateAliasRefCondition(aliasId, 1, 0)],
+            [fixture.Npc1]);
     }
 
     // TODO
@@ -132,15 +130,12 @@ public class VoiceTypeAssetLookupTestSkyrim
         FormList formList,
         uint aliasId)
     {
-        fixture.Run(rec =>
-        {
-            formList.Items.Add(fixture.Npc1.Voice);
-            formList.Items.Add(fixture.Npc2.Voice);
-
-            fixture.Quest.Aliases.Add(new() { ID = aliasId, VoiceTypes = formList.ToNullableLink() });
-            rec.Conditions.Add(CreateAliasRefCondition(aliasId, 1, 0));
-
-        }, [fixture.Npc1, fixture.Npc2]);
+        formList.Items.Add(fixture.Npc1.Voice);
+        formList.Items.Add(fixture.Npc2.Voice);
+        fixture.Quest.Aliases.Add(new() { ID = aliasId, VoiceTypes = formList.ToNullableLink() });
+        fixture.AssertSpeakersEqual(
+            [CreateAliasRefCondition(aliasId, 1, 0)],
+            [fixture.Npc1, fixture.Npc2]);
     }
 
     [Fact]
