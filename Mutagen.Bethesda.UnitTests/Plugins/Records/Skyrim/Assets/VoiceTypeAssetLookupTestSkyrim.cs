@@ -73,28 +73,41 @@ public class VoiceTypeAssetLookupTestFixture
 
 public class VoiceTypeAssetLookupTestSkyrim
 {
-    // Utilities to create common conditions
+    #region Condition Factories
+    public ConditionFloat CreateCondition(ConditionData data, float value, Condition.Flag flags)
+    {
+        return new ConditionFloat
+        {
+            Data = data,
+            ComparisonValue = value,
+            Flags = flags
+        };
+    }
     public ConditionFloat CreateIdCondition(IReferenceableObjectGetter target, float value, Condition.Flag flags)
     {
         var data = new GetIsIDConditionData();
         data.Object.Link.SetTo(target);
-        return new ConditionFloat()
-        {
-            Data = data,
-            ComparisonValue = value,
-            Flags = flags,
-        };
+        return CreateCondition(data, value, flags);
     }
 
     public ConditionFloat CreateAliasRefCondition(uint id, float value, Condition.Flag flags)
     {
-        return new ConditionFloat()
-        {
-            Data = new GetIsAliasRefConditionData() { ReferenceAliasIndex = (int)id },
-            ComparisonValue = value,
-            Flags = flags,
-        };
+        return CreateCondition(new GetIsAliasRefConditionData() { ReferenceAliasIndex = (int)id }, value, flags);
     }
+
+    public ConditionFloat CreateSexCondition(MaleFemaleGender gender, float value, Condition.Flag flags)
+    {
+        return CreateCondition(new GetIsSexConditionData() { MaleFemaleGender = gender }, value, flags);
+    }
+
+    public ConditionFloat CreateVoiceCondition(IFormLinkGetter<IVoiceTypeOrListGetter> voice, float value, Condition.Flag flags)
+    {
+        var data = new GetIsVoiceTypeConditionData();
+        data.VoiceTypeOrList.Link.SetTo(voice);
+        return CreateCondition(data, value, flags);
+    }
+
+    #endregion
 
     [Theory, MutagenModAutoData]
     public void TestGetIsId(VoiceTypeAssetLookupTestFixture fixture)
@@ -102,6 +115,24 @@ public class VoiceTypeAssetLookupTestSkyrim
         fixture.AssertSpeakersEqual(
             [CreateIdCondition(fixture.Npc1, 1, 0)],
             [fixture.Npc1]);
+    }
+
+    [Theory, MutagenModAutoData]
+    public void TestGetIsIdAnd(VoiceTypeAssetLookupTestFixture fixture)
+    {
+        fixture.AssertSpeakersEqual(
+            // GetIsId 1 && GetIsId 2
+            [CreateIdCondition(fixture.Npc1, 1, 0), CreateIdCondition(fixture.Npc2, 1, 0)],
+            []);
+    }
+
+    [Theory, MutagenModAutoData]
+    public void TestGetIsIdOr(VoiceTypeAssetLookupTestFixture fixture)
+    {
+        fixture.AssertSpeakersEqual(
+            // GetIsId 1 || GetIsId 2
+            [CreateIdCondition(fixture.Npc1, 1, Condition.Flag.OR), CreateIdCondition(fixture.Npc2, 1, 0)],
+            [fixture.Npc1, fixture.Npc2]);
     }
 
     [Theory, MutagenModAutoData]
@@ -113,11 +144,41 @@ public class VoiceTypeAssetLookupTestSkyrim
             [fixture.Npc1]);
     }
 
+    [Theory, MutagenModAutoData]
+    public void TestGetIsSex(VoiceTypeAssetLookupTestFixture fixture)
+    {
+        fixture.Npc1.Configuration.Flags &= ~NpcConfiguration.Flag.Female;
+        fixture.Npc2.Configuration.Flags |= NpcConfiguration.Flag.Female;
+
+        // == 1
+        fixture.AssertSpeakersEqual([CreateSexCondition(MaleFemaleGender.Male, 1, 0)], [fixture.Npc1]);
+        fixture.AssertSpeakersEqual([CreateSexCondition(MaleFemaleGender.Female, 1, 0)], [fixture.Npc2]);
+        // == 0
+        fixture.AssertSpeakersEqual([CreateSexCondition(MaleFemaleGender.Male, 0, 0)], [fixture.Npc2]);
+        fixture.AssertSpeakersEqual([CreateSexCondition(MaleFemaleGender.Female, 0, 0)], [fixture.Npc1]);
+    }
+
+    [Theory, MutagenModAutoData]
+    public void TestGetIsVoice(VoiceTypeAssetLookupTestFixture fixture)
+    {
+        fixture.AssertSpeakersEqual([CreateVoiceCondition(fixture.Npc1.Voice, 1, 0)], [fixture.Npc1]);
+    }
+
+    [Theory, MutagenModAutoData]
+    public void TestGetIsVoiceList(VoiceTypeAssetLookupTestFixture fixture, FormList list)
+    {
+        list.Items.AddRange(fixture.Npc1.Voice, fixture.Npc2.Voice);
+        fixture.AssertSpeakersEqual([CreateVoiceCondition(list.ToLink(), 1, 0)], [fixture.Npc1, fixture.Npc2]);
+
+        // (Voice1 || Voice2) && !Voice2
+        fixture.AssertSpeakersEqual([CreateVoiceCondition(list.ToLink(), 1, 0), CreateVoiceCondition(fixture.Npc2.Voice, 0, 0)], [fixture.Npc1]);
+    }
+
     // TODO
     //[Theory, MutagenModAutoData]
     //public void TestFilePath(VoiceTypeAssetLookupTestFixture fixture)
     //{
-        
+
     //}
 
     private readonly ILinkCache _linkCache;
@@ -138,8 +199,7 @@ public class VoiceTypeAssetLookupTestSkyrim
         FormList formList,
         uint aliasId)
     {
-        formList.Items.Add(fixture.Npc1.Voice);
-        formList.Items.Add(fixture.Npc2.Voice);
+        formList.Items.AddRange(fixture.Npc1.Voice, fixture.Npc2.Voice);
         fixture.Quest.Aliases.Add(new() { ID = aliasId, VoiceTypes = formList.ToNullableLink() });
         fixture.AssertSpeakersEqual(
             [CreateAliasRefCondition(aliasId, 1, 0)],
