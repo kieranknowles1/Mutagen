@@ -2,6 +2,7 @@ using AutoFixture;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Assets;
 using Mutagen.Bethesda.Plugins.Cache;
+using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Skyrim;
 using Mutagen.Bethesda.Skyrim.Records.Assets.VoiceType;
 using Mutagen.Bethesda.Testing;
@@ -19,7 +20,9 @@ public class VoiceTypeAssetLookupTestFixture
 
     public readonly Quest Quest;
     public readonly DialogTopic Topic;
+    public readonly VoiceType Voice1;
     public readonly Npc Npc1;
+    public readonly VoiceType Voice2;
     public readonly Npc Npc2;
 
     public VoiceTypeAssetLookupTestFixture(
@@ -40,9 +43,13 @@ public class VoiceTypeAssetLookupTestFixture
 
         voice1.EditorID = edid1;
         npc1.Voice.SetTo(voice1);
+        npc1.EditorID = nameof(Npc1); // For error message clarity
+        Voice1 = voice1;
         Npc1 = npc1;
         voice2.EditorID = edid2;
         npc2.Voice.SetTo(voice2);
+        npc2.EditorID = nameof(Npc2);
+        Voice2 = voice2;
         Npc2 = npc2;
 
         topic.Quest.SetTo(quest);
@@ -59,7 +66,8 @@ public class VoiceTypeAssetLookupTestFixture
         var lookup = new VoiceTypeAssetLookup();
         lookup.Prep(LinkCache.CreateImmutableAssetLinkCache());
 
-        lookup.GetSpeakers(rec).ShouldBe(expectedSpeakers.Select(s => s.ToLink()), ignoreOrder: true);
+        // Check against resolved links so that errors include editor IDs
+        lookup.GetSpeakers(rec).Select(s => s.Resolve(LinkCache)).ShouldBe(expectedSpeakers, ignoreOrder: true);
     }
 }
 
