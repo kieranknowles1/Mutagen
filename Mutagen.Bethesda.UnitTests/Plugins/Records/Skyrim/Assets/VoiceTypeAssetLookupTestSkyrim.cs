@@ -42,11 +42,13 @@ public class VoiceTypeAssetLookupTestFixture
         LinkCache = mod.ToMutableLinkCache();
 
         voice1.EditorID = edid1;
+        voice1.Flags &= ~VoiceType.Flag.AllowDefaultDialog;
         npc1.Voice.SetTo(voice1);
         npc1.EditorID = nameof(Npc1); // For error message clarity
         Voice1 = voice1;
         Npc1 = npc1;
         voice2.EditorID = edid2;
+        voice2.Flags &= ~VoiceType.Flag.AllowDefaultDialog;
         npc2.Voice.SetTo(voice2);
         npc2.EditorID = nameof(Npc2);
         Voice2 = voice2;
@@ -122,6 +124,42 @@ public class VoiceTypeAssetLookupTestSkyrim
         fixture.AssertSpeakersEqual(
             [CreateIdCondition(fixture.Npc1, 1, 0)],
             [fixture.Npc1]);
+    }
+
+    [Theory, MutagenModAutoData]
+    public void TestGetIsIdEpsilon(VoiceTypeAssetLookupTestFixture fixture)
+    {
+        // Skyrim.exe does not use an epsilon when comparing floats.
+        fixture.AssertSpeakersEqual(
+            [CreateIdCondition(fixture.Npc1, 1.0001f, 0)],
+            []);
+    }
+
+    [Theory, MutagenModAutoData]
+    public void TestCompareGlobal(VoiceTypeAssetLookupTestFixture fixture, GlobalFloat global)
+    {
+        var data = new GetIsIDConditionData();
+        data.Object.Link.SetTo(fixture.Npc1);
+        var condition = new ConditionGlobal()
+        {
+            Data = data,
+            ComparisonValue = global.ToLink()
+        };
+
+        // Global checks against 1, but shouldn't be considered as it may change
+        global.MajorFlags &= ~Global.MajorFlag.Constant;
+        global.Data = 1;
+        fixture.AssertSpeakersEqual([condition], [fixture.Npc1]);
+
+        global.MajorFlags |= Global.MajorFlag.Constant;
+        global.Data = 1;
+        fixture.AssertSpeakersEqual([condition], [fixture.Npc1]);
+        global.Data = 0;
+        fixture.AssertSpeakersEqual([condition], []);
+
+        // Epsilon is not used here either
+        global.Data = 1.0001f;
+        fixture.AssertSpeakersEqual([condition], []);
     }
 
     [Theory, MutagenModAutoData]
