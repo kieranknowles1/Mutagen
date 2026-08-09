@@ -124,6 +124,11 @@ public class VoiceTypeAssetLookupTestSkyrim
         fixture.AssertSpeakersEqual(
             [CreateIdCondition(fixture.Npc1, 1, 0)],
             [fixture.Npc1]);
+
+        // Should not include Npc2 as it does not use a default voice
+        fixture.AssertSpeakersEqual(
+            [CreateIdCondition(fixture.Npc1, 0, 0)],
+            []);
     }
 
     [Theory, MutagenModAutoData]
@@ -171,7 +176,7 @@ public class VoiceTypeAssetLookupTestSkyrim
         // Global checks against 1, but shouldn't be considered as it may change
         global.MajorFlags &= ~Global.MajorFlag.Constant;
         global.Data = 1;
-        fixture.AssertSpeakersEqual([condition], [fixture.Npc1]);
+        fixture.AssertSpeakersEqual([condition], []);
 
         global.MajorFlags |= Global.MajorFlag.Constant;
         global.Data = 1;

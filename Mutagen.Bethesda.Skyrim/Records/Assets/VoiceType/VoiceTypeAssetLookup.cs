@@ -551,61 +551,77 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
         if (voices.IsDefault)
             return voices;
 
-        if (IsConditionNegated(condition))
+        var filter = GetBoolFilterType(condition);
+        switch (filter)
         {
-            // Special case: don't exclude an inverted alias. Alias references may change throughout the quest
-            if (data is IGetIsAliasRefConditionDataGetter)
+            case BoolFilterType.Positive:
+                return voices;
+            case BoolFilterType.Negative:
+                // Special case: don't exclude an inverted alias. Alias references may change throughout the quest
+                if (data is IGetIsAliasRefConditionDataGetter)
+                    return new VoiceContainer(true);
+                // Return compliment of all speakers, unless we're inverting a GetIsVoiceType condition then return the difference from the set of default voice speakers
+                // TODO: Do we want to return all default voice speakers except this set instead?
+                // https://ck.uesp.net/wiki/VoiceType the default voice flag seems to imply that non-default voices must be explicitly included
+                return Invert(voices, data is IGetIsVoiceTypeConditionDataGetter, currentMod);
+            case BoolFilterType.All:
                 return new VoiceContainer(true);
-            // If we're inverting a GetIsVoiceType condition then we should return the set of speakers with default voices other than the excluded voice types
-            // TODO: Do we want to return all default voice speakers except this set instead?
-            return Invert(voices, data is IGetIsVoiceTypeConditionDataGetter, currentMod);
+            case BoolFilterType.None:
+                return new VoiceContainer();
+            default: throw new Exception();
         }
-
-        return voices;
     }
 
-    private bool IsConditionNegated(IConditionGetter condition)
+    internal enum BoolFilterType
     {
-        const double floatTolerance = 0.001;
+        Positive,
+        Negative, // Condition negates the set of speakers, therefore filtering on the compliment
+        All, // Condition does not filter anything, either misconfigured or unable to statically determine
+        None // Conditon filters out everything, most likely due to being misconfigured
+    }
 
-        bool FloatEquals(float value, int expected) => Math.Abs(value - expected) > floatTolerance;
-
-        bool GlobalEquals(ILink<IGlobalGetter> global, int expected)
+    private BoolFilterType GetBoolFilterType(IConditionGetter condition)
+    {
+        float comparisonValue;
+        switch (condition)
         {
-            var globalValue = global.TryResolve(_formLinkCache);
-            if (globalValue == null) return true;
+            case IConditionFloatGetter conditionFloat:
+                comparisonValue = conditionFloat.ComparisonValue;
+                break;
+            case IConditionGlobalGetter conditionGlobal:
+                if (!conditionGlobal.ComparisonValue.TryResolve(_formLinkCache, out var global))
+                    return BoolFilterType.None;
+                if (!global.MajorFlags.HasFlag(Global.MajorFlag.Constant))
+                    return BoolFilterType.All;
 
-            return globalValue switch
-            {
-                IGlobalFloatGetter globalFloat => globalFloat.Data != null && Math.Abs(globalFloat.Data.Value - expected) > floatTolerance,
-                IGlobalIntGetter globalInt => globalInt.Data != null && globalInt.Data.Value != expected,
-                IGlobalShortGetter globalShort => globalShort.Data != null && globalShort.Data.Value != expected,
-                _ => true
-            };
+                comparisonValue = global switch
+                {
+                    IGlobalFloatGetter gf => gf.Data,
+                    IGlobalIntGetter gi => gi.Data,
+                    IGlobalShortGetter gs => gs.Data,
+                    _ => throw new ArgumentOutOfRangeException(nameof(condition)),
+                } ?? 0;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(condition));
         }
 
         switch (condition.CompareOperator)
         {
             case CompareOperator.EqualTo:
-                return condition switch
-                {
-                    IConditionFloatGetter floatCondition => FloatEquals(floatCondition.ComparisonValue, 1),
-                    IConditionGlobalGetter globalCondition => GlobalEquals(globalCondition.ComparisonValue, 1),
-                    _ => true
-                };
+                if (comparisonValue == 1)
+                    return BoolFilterType.Positive;
+                else if (comparisonValue == 0)
+                    return BoolFilterType.Negative;
+                return BoolFilterType.None;
             case CompareOperator.NotEqualTo:
-                return condition switch
-                {
-                    IConditionFloatGetter floatCondition => FloatEquals(floatCondition.ComparisonValue, 0),
-                    IConditionGlobalGetter globalCondition => GlobalEquals(globalCondition.ComparisonValue, 0),
-                    _ => true
-                };
-            case CompareOperator.GreaterThan:
-            case CompareOperator.GreaterThanOrEqualTo:
-            case CompareOperator.LessThan:
-            case CompareOperator.LessThanOrEqualTo:
+                if (comparisonValue == 1)
+                    return BoolFilterType.Negative;
+                if (comparisonValue == 0)
+                    return BoolFilterType.Positive;
+                return BoolFilterType.All;
             default:
-                return true;
+                return BoolFilterType.All;
         }
     }
 
