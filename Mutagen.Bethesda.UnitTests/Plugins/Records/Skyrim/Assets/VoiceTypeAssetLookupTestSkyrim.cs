@@ -107,6 +107,13 @@ public class VoiceTypeAssetLookupTestSkyrim
         return CreateCondition(data, value, flags);
     }
 
+    public ConditionFloat CreateListCondition(FormList list, float value, Condition.Flag flags)
+    {
+        var data = new IsInListConditionData();
+        data.FormList.Link.SetTo(list);
+        return CreateCondition(data, value, flags);
+    }
+
     #endregion
 
     [Theory, MutagenModAutoData]
@@ -172,6 +179,16 @@ public class VoiceTypeAssetLookupTestSkyrim
 
         // (Voice1 || Voice2) && !Voice2
         fixture.AssertSpeakersEqual([CreateVoiceCondition(list.ToLink(), 1, 0), CreateVoiceCondition(fixture.Npc2.Voice, 0, 0)], [fixture.Npc1]);
+    }
+
+    [Theory, MutagenModAutoData]
+    public void TestIsInList(VoiceTypeAssetLookupTestFixture fixture, FormList list)
+    {
+        list.Items.AddRange(fixture.Npc1.ToLink(), fixture.Npc2.Voice);
+        fixture.AssertSpeakersEqual([CreateListCondition(list, 1, 0)], [fixture.Npc1, fixture.Npc2]);
+
+        // (Npc1 || Npc2) && !Npc2
+        fixture.AssertSpeakersEqual([CreateListCondition(list, 1, 0), CreateIdCondition(fixture.Npc2, 0, 0)], [fixture.Npc1]);
     }
 
     // TODO
