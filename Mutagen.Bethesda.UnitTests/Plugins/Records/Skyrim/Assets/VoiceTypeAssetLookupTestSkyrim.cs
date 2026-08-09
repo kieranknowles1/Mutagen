@@ -1,16 +1,116 @@
-﻿using Mutagen.Bethesda.Plugins;
+using AutoFixture;
+using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Assets;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Skyrim;
 using Mutagen.Bethesda.Skyrim.Records.Assets.VoiceType;
 using Mutagen.Bethesda.Testing;
 using Mutagen.Bethesda.Testing.AutoData;
+using Shouldly;
 using Xunit;
 
 namespace Mutagen.Bethesda.UnitTests.Plugins.Records.Skyrim.Assets;
 
+public class VoiceTypeAssetLookupTestFixture
+{
+    private readonly IFixture _fixture;
+    public readonly SkyrimMod Mod;
+    public readonly ILinkCache LinkCache;
+
+    public readonly Quest Quest;
+    public readonly DialogTopic Topic;
+    public readonly Npc Npc1;
+    public readonly Npc Npc2;
+
+    public VoiceTypeAssetLookupTestFixture(
+        IFixture fixture,
+        SkyrimMod mod,
+        DialogTopic topic,
+        Quest quest,
+        Npc npc1,
+        VoiceType voice1,
+        string edid1,
+        Npc npc2,
+        VoiceType voice2,
+        string edid2)
+    {
+        _fixture = fixture;
+        Mod = mod;
+        LinkCache = mod.ToMutableLinkCache();
+
+        voice1.EditorID = edid1;
+        npc1.Voice.SetTo(voice1);
+        Npc1 = npc1;
+        voice2.EditorID = edid2;
+        npc2.Voice.SetTo(voice2);
+        Npc2 = npc2;
+
+        topic.Quest.SetTo(quest);
+        Topic = topic;
+        Quest = quest;
+    }
+
+    public void Run(Action<DialogResponses> prep, IEnumerable<INpcGetter> expectedSpeakers)
+    {
+        var rec = _fixture.Create<DialogResponses>();
+        Topic.Responses.Add(rec);
+        prep(rec);
+
+        var lookup = new VoiceTypeAssetLookup();
+        lookup.Prep(LinkCache.CreateImmutableAssetLinkCache());
+
+        lookup.GetSpeakers(rec).ShouldBe(expectedSpeakers.Select(s => s.ToLink()), ignoreOrder: true);
+    }
+}
+
 public class VoiceTypeAssetLookupTestSkyrim
 {
+    // Utilities to create common conditions
+    public ConditionFloat CreateIdCondition(IReferenceableObjectGetter target, float value, Condition.Flag flags)
+    {
+        var data = new GetIsIDConditionData();
+        data.Object.Link.SetTo(target);
+        return new ConditionFloat()
+        {
+            Data = data,
+            ComparisonValue = value,
+            Flags = flags,
+        };
+    }
+
+    [Theory, MutagenModAutoData]
+    public void TestGetIsId(VoiceTypeAssetLookupTestFixture fixture)
+    {
+        fixture.Run(rec =>
+        {
+            rec.Conditions.Add(CreateIdCondition(fixture.Npc1, 1, 0));
+        }, [fixture.Npc1]);
+    }
+
+    [Theory, MutagenModAutoData]
+    public void TestGetIsAlias(VoiceTypeAssetLookupTestFixture fixture, uint aliasId)
+    {
+        fixture.Run(rec =>
+        {
+            fixture.Quest.Aliases.Add(new() { ID = aliasId, UniqueActor = fixture.Npc1.ToNullableLink() });
+            rec.Conditions.Add(new ConditionFloat()
+            {
+                Data = new GetIsAliasRefConditionData()
+                {
+                    ReferenceAliasIndex = (int)aliasId,
+                },
+                ComparisonValue = 1,
+            });
+        }, [fixture.Npc1]);
+    }
+
+    // TODO
+    //[Theory, MutagenModAutoData]
+    //public void TestFilePath(VoiceTypeAssetLookupTestFixture fixture)
+    //{
+        
+    //}
+
     private readonly ILinkCache _linkCache;
     private readonly VoiceTypeAssetLookup _searcher = new();
 
