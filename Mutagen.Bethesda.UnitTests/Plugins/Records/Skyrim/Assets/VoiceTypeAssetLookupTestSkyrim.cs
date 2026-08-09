@@ -20,6 +20,7 @@ public class VoiceTypeAssetLookupTestFixture
 
     public readonly Quest Quest;
     public readonly DialogTopic Topic;
+
     public readonly VoiceType Voice1;
     public readonly Npc Npc1;
     public readonly VoiceType Voice2;
@@ -42,13 +43,12 @@ public class VoiceTypeAssetLookupTestFixture
         LinkCache = mod.ToMutableLinkCache();
 
         voice1.EditorID = edid1;
-        voice1.Flags &= ~VoiceType.Flag.AllowDefaultDialog;
         npc1.Voice.SetTo(voice1);
         npc1.EditorID = nameof(Npc1); // For error message clarity
         Voice1 = voice1;
         Npc1 = npc1;
+
         voice2.EditorID = edid2;
-        voice2.Flags &= ~VoiceType.Flag.AllowDefaultDialog;
         npc2.Voice.SetTo(voice2);
         npc2.EditorID = nameof(Npc2);
         Voice2 = voice2;
@@ -124,6 +124,28 @@ public class VoiceTypeAssetLookupTestSkyrim
         fixture.AssertSpeakersEqual(
             [CreateIdCondition(fixture.Npc1, 1, 0)],
             [fixture.Npc1]);
+    }
+
+    [Theory, MutagenModAutoData]
+    public void TestDefaultDialog(
+        VoiceTypeAssetLookupTestFixture fixture,
+        Npc npcDefault,
+        VoiceType voiceDefault,
+        string edidDefault)
+    {
+        fixture.Voice1.Flags |= VoiceType.Flag.AllowDefaultDialog;
+        voiceDefault.EditorID = edidDefault;
+
+        npcDefault.Voice.SetTo(voiceDefault);
+        npcDefault.EditorID = nameof(npcDefault);
+        voiceDefault.Flags |= VoiceType.Flag.AllowDefaultDialog;
+
+        // Include all speakers with default voices, except those excluded by conditions
+        fixture.AssertSpeakersEqual([], [fixture.Npc1, npcDefault]);
+
+        fixture.AssertSpeakersEqual(
+            [CreateIdCondition(fixture.Npc1, 0, 0)],
+            [npcDefault]);
     }
 
     [Theory, MutagenModAutoData]
