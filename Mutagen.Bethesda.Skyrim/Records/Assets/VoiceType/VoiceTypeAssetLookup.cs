@@ -37,6 +37,8 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
     private readonly object _questCacheLock = new();
     private readonly Dictionary<FormKey, VoiceContainer> _questCache = new();
 
+    private VoiceContainer _fullVoiceContainer = null!;
+
     public void Prep(IAssetLinkCache linkCache)
     {
         _formLinkCache = linkCache.FormLinkCache;
@@ -144,6 +146,8 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
             .Select(v => v.EditorID)
             .WhereNotNull()
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        _fullVoiceContainer = new(_speakerVoices);
     }
 
     /// <summary>
@@ -724,7 +728,7 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
 
     private VoiceContainer Invert(VoiceContainer voiceContainer)
     {
-        VoiceContainer baseVoices = new(_speakerVoices);
+        var baseVoices = (VoiceContainer)_fullVoiceContainer.Clone();
         baseVoices.Remove(voiceContainer);
         return baseVoices;
     }
