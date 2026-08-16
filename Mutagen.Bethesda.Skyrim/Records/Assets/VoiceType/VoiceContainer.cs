@@ -26,26 +26,12 @@ public class VoiceContainer : ICloneable, IEquatable<VoiceContainer>
         }
     }
 
-    public VoiceContainer(Dictionary<FormKey, IEnumerable<string>> npcVoices)
+    public VoiceContainer(IEnumerable<(FormKey, IEnumerable<string>)> npcVoices)
     {
         foreach (var (npc, voiceTypes) in npcVoices)
         {
             foreach (var voiceType in voiceTypes)
             {
-                _voices
-                    .GetOrAdd(voiceType)
-                    .Add(npc);
-            }
-        }
-    }
-
-    public VoiceContainer(Dictionary<FormKey, HashSet<string>> npcVoices)
-    {
-        foreach (var (npc, voiceTypes) in npcVoices)
-        {
-            foreach (var voiceType in voiceTypes)
-            {
-                
                 _voices
                     .GetOrAdd(voiceType)
                     .Add(npc);
