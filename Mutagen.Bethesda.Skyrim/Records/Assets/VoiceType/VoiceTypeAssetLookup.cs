@@ -39,6 +39,11 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
 
     private VoiceContainer _fullVoiceContainer = null!;
 
+    // Voice type -> speakers
+    // For GetIsVoiceType conditions
+    // TODO: Should this and other lookups use links?
+    private Lazy<Dictionary<string, List<FormKey>>> _voiceSpeakers = null!;
+
     public void Prep(IAssetLinkCache linkCache)
     {
         _formLinkCache = linkCache.FormLinkCache;
@@ -148,6 +153,19 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         _fullVoiceContainer = new(_speakerVoices);
+
+        _voiceSpeakers = new(() =>
+        {
+            var lookup = new Dictionary<string, List<FormKey>>();
+            foreach (var (speaker, voices) in _speakerVoices)
+            {
+                foreach (var voice in voices)
+                {
+                    lookup.GetOrAdd(voice).Add(speaker);
+                }
+            }
+            return lookup;
+        });
     }
 
     /// <summary>
@@ -246,13 +264,10 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
         return voiceContainer.Voices.SelectMany(x =>
         {
             // A subset of speakers is used
-            if (x.Value.Count > 0) return x.Value;
+            if (x.Value.Count > 0) return x.Value as IEnumerable<FormKey>;
 
             // The whole voice type is used
-            // TODO: This would benefit from a reverse lookup
-            return _speakerVoices
-                .Where(y => y.Value.Contains(x.Key))
-                .Select(y => y.Key);
+            return _voiceSpeakers.Value.GetOrDefault(x.Key) ?? [];
         }).Distinct().Select(speaker => new FormLink<IHasVoiceTypeGetter>(speaker));
     }
 
