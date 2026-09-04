@@ -4,15 +4,16 @@ public static class VoiceContainerExtension
 {
     public static VoiceContainer MergeInsert(this IEnumerable<VoiceContainer> voiceContainers, bool isDefaultIfEmpty)
     {
-        // TODO: Use of Any here means we have to rerun logic
-        if (!voiceContainers.Any()) return new VoiceContainer(isDefaultIfEmpty);
-
+        // Don't use voiceContainers.Any as it would evaluate the enumerable twice
+        var hasAny = false;
+        // TODO: Should we have an edge case for N == 1? Bench against full dataset to get a realistic idea
         var output = new VoiceContainer();
         foreach (var voiceContainer in voiceContainers)
         {
             output.Insert(voiceContainer);
+            hasAny = true;
         }
-
+        if (!hasAny) return new(isDefaultIfEmpty);
         return output;
     }
 
