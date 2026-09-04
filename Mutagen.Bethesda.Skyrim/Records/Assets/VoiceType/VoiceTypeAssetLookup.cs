@@ -570,7 +570,7 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
                 return null;
             }
 
-            voices = Invert(voices);
+            voices.Invert(_voiceSpeakers);
         }
 
         return voices;
@@ -749,13 +749,6 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
     }
 
     private VoiceContainer GetVoices(IQuestGetter quest) => GetVoices(quest.DialogConditions, quest);
-
-    private VoiceContainer Invert(VoiceContainer voiceContainer)
-    {
-        VoiceContainer baseVoices = new(_voiceSpeakers);
-        baseVoices.Remove(voiceContainer);
-        return baseVoices;
-    }
 
     private IEnumerable<FormKey> GetVoiceTypes(FormKey speaker)
     {

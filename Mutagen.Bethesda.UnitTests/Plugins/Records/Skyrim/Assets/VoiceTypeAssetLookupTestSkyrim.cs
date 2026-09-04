@@ -453,6 +453,12 @@ public class VoiceTypeAssetLookupTestSkyrim
         fixture.AssertSpeakersEqual(
             [ConditionFactory.Create(ConditionFactory.IsInList(list), 1)],
             [npc1]);
+
+        // Should support duplicate entries
+        list.Items.AddRange(npc1.ToLink(), npc1.ToLink());
+        fixture.AssertSpeakersEqual(
+            [ConditionFactory.Create(ConditionFactory.IsInList(list), 1)],
+            [npc1]);
     }
 
     [Theory, MutagenModAutoData]
