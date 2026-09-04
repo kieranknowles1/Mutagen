@@ -479,8 +479,7 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
                             return new VoiceContainer(voiceType.FormKey);
                         case IFormListGetter formList:
                             return new VoiceContainer(formList.Items
-                                .Where(link => _formLinkCache.TryResolveIdentifier(link, out var _))
-                                .Select(voice => voice.FormKey));
+                                .Select(item => item.FormKey).Where(_allVoiceTypes.Contains));
                     }
                 }
 
@@ -532,12 +531,10 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
 
                 break;
             case IIsInListConditionDataGetter isInList:
-                if (isInList.FormList.UsesLink())
+                if (isInList.FormList.Link.TryResolve(_formLinkCache, out var formList2))
                 {
-                    var formList = isInList.FormList.Link.TryResolve(_formLinkCache);
-                    //Only look at speakers in the form list
-                    // TODO: Don't use an intermediate voice container
-                    if (formList != null) return formList.Items.Select(link => GetVoices(link.FormKey)).MergeInsert(false);
+                    // Constructor skips items that are not IHasVoiceTypeGetter due to GetVoiceTypes returning empty
+                    return new VoiceContainer(formList2.Items.Select(i => i.FormKey), GetVoiceTypes);
                 }
 
                 break;
