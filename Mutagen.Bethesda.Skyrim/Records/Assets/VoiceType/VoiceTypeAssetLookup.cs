@@ -490,7 +490,8 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
             case IGetInFactionConditionDataGetter getInFaction:
                 if (getInFaction.Faction.UsesLink() && _factionNPCs.TryGetValue(getInFaction.Faction.Link.FormKey, out var factionNpcFormKeys))
                 {
-                    return new VoiceContainer(factionNpcFormKeys.ToDictionary(npc => npc, GetVoiceTypes));
+                    // TODO: Would passing lookup directly (probably via an interface) be faster?
+                    return new VoiceContainer(factionNpcFormKeys, GetVoiceTypes);
                 }
 
                 break;
@@ -498,34 +499,35 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
                 // Assume the actor can be in any rank as long they are in the faction - they might shift ranks later on
                 if (getFactionRank.Faction.UsesLink() && _factionNPCs.TryGetValue(getFactionRank.Faction.Link.FormKey, out var factionNpcFormKeys2))
                 {
-                    return new VoiceContainer(factionNpcFormKeys2.ToDictionary(npc => npc, GetVoiceTypes));
+                    return new VoiceContainer(factionNpcFormKeys2, GetVoiceTypes);
                 }
 
                 break;
             case IGetIsClassConditionDataGetter getIsClass:
                 if (getIsClass.Class.UsesLink() && _classNPCs.TryGetValue(getIsClass.Class.Link.FormKey, out var classNpcFormKeys))
                 {
-                    return new VoiceContainer(classNpcFormKeys.ToDictionary(npc => npc, GetVoiceTypes));
+                    return new VoiceContainer(classNpcFormKeys, GetVoiceTypes);
                 }
 
                 break;
             case IHasKeywordConditionDataGetter hasKeyword:
                 if (_keywordNPCs.TryGetValue(hasKeyword.Keyword.Link.FormKey, out var keywordNpcs))
                 {
-                    return new VoiceContainer(keywordNpcs.ToDictionary(npc => npc, GetVoiceTypes));
+                    return new VoiceContainer(keywordNpcs, GetVoiceTypes);
                 }
                 break;
             case IGetIsRaceConditionDataGetter getIsRace:
                 if (getIsRace.Race.UsesLink() && _raceNPCs.TryGetValue(getIsRace.Race.Link.FormKey, out var raceNpcFormKeys))
                 {
-                    return new VoiceContainer(raceNpcFormKeys.ToDictionary(npc => npc, GetVoiceTypes));
+                    return new VoiceContainer(raceNpcFormKeys, GetVoiceTypes);
                 }
 
                 break;
             case IGetIsSexConditionDataGetter sexConditionDataGetter:
                 if (_genderNPCs.TryGetValue(sexConditionDataGetter.MaleFemaleGender, out var genderNpcFormKeys))
                 {
-                    return new VoiceContainer(genderNpcFormKeys.ToDictionary(npc => npc, GetVoiceTypes));
+                    // TODO: Maybe pre build container here
+                    return new VoiceContainer(genderNpcFormKeys, GetVoiceTypes);
                 }
 
                 break;
@@ -534,12 +536,14 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
                 {
                     var formList = isInList.FormList.Link.TryResolve(_formLinkCache);
                     //Only look at speakers in the form list
+                    // TODO: Don't use an intermediate voice container
                     if (formList != null) return formList.Items.Select(link => GetVoices(link.FormKey)).MergeInsert(false);
                 }
 
                 break;
             case IIsChildConditionDataGetter isChild:
-                return new VoiceContainer(_childNPCs.ToDictionary(npc => npc, GetVoiceTypes));
+                // TODO: Maybe pre build container here
+                return new VoiceContainer(_childNPCs, GetVoiceTypes);
             default:
                 // Condition not intended to filter
                 return null;
@@ -751,14 +755,14 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
 
     private VoiceContainer Invert(VoiceContainer voiceContainer)
     {
-        VoiceContainer baseVoices = new(_speakerVoices);
+        VoiceContainer baseVoices = new(_voiceSpeakers);
         baseVoices.Remove(voiceContainer);
         return baseVoices;
     }
 
     private IEnumerable<FormKey> GetVoiceTypes(FormKey speaker)
     {
-        return _speakerVoices.TryGetValue(speaker, out var speakerVoiceTypes) ? speakerVoiceTypes : [];
+        return _speakerVoices.GetOrDefault(speaker) ?? [];
     }
 
     private IEnumerable<T> GetInheritedData<T>(INpcSpawnGetter spawn, NpcConfiguration.TemplateFlag inheritFlag, Func<INpcGetter, IEnumerable<T>> getter)
