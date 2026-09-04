@@ -193,6 +193,12 @@ public class VoiceTypeAssetLookupTestSkyrim
         fixture.AssertSpeakersEqual(
             [ConditionFactory.Create(ConditionFactory.GetIsVoice(list.ToLink()), 1), ConditionFactory.Create(ConditionFactory.GetIsVoice(npc2.Voice), 0)],
             [npc1]);
+
+        // Function should work if a voice type appears multiple times
+        list.Items.AddRange(npc1.Voice, npc1.Voice);
+        fixture.AssertSpeakersEqual(
+            [ConditionFactory.Create(ConditionFactory.GetIsVoice(list.ToLink()), 1)],
+            [npc1, npc2]);
     }
 
     [Theory, MutagenModAutoData]

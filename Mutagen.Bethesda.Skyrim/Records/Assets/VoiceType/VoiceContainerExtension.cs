@@ -1,9 +1,10 @@
-﻿namespace Mutagen.Bethesda.Skyrim.Records.Assets.VoiceType;
+namespace Mutagen.Bethesda.Skyrim.Records.Assets.VoiceType;
 
 public static class VoiceContainerExtension
 {
     public static VoiceContainer MergeInsert(this IEnumerable<VoiceContainer> voiceContainers, bool isDefaultIfEmpty)
     {
+        // TODO: Use of Any here means we have to rerun logic
         if (!voiceContainers.Any()) return new VoiceContainer(isDefaultIfEmpty);
 
         var output = new VoiceContainer();

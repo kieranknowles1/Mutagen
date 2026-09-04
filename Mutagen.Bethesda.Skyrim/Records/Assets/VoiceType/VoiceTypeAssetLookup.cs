@@ -37,10 +37,15 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
     private readonly object _questCacheLock = new();
     private readonly Dictionary<FormKey, VoiceContainer> _questCache = new();
 
+    // Reverse lookup for GetIsVoiceType conditions
+    // TODO: Would this be faster with links? Would mean distinct comparison also needs to use links
+    private readonly Dictionary<FormKey, List<FormKey>> _voiceSpeakers = [];
+
     public void Prep(IAssetLinkCache linkCache)
     {
         _formLinkCache = linkCache.FormLinkCache;
 
+        // TODO: Much of this could be lazy
         foreach (var quest in _formLinkCache.WinningOverrides<IQuestGetter>())
         {
             foreach (var alias in quest.Aliases)
@@ -142,6 +147,14 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
         _allVoiceTypes = _formLinkCache.WinningOverrides<IVoiceTypeGetter>()
             .Select(v => v.FormKey)
             .ToHashSet();
+
+        foreach (var (speaker, voices) in _speakerVoices)
+        {
+            foreach (var voice in voices)
+            {
+                _voiceSpeakers.GetOrAdd(voice).Add(speaker);
+            }
+        }
     }
 
     /// <summary>
@@ -256,13 +269,10 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
         return GetVoiceContainer(responses).Voices.SelectMany(x =>
         {
             // A subset of speakers is used
-            if (x.Value.Count > 0) return x.Value;
+            if (x.Value.Count > 0) return x.Value as IEnumerable<FormKey>;
 
             // The whole voice type is used
-            // TODO: This would benefit from a reverse lookup
-            return _speakerVoices
-                .Where(y => y.Value.Contains(x.Key))
-                .Select(y => y.Key);
+            return _voiceSpeakers.GetOrDefault(x.Key) ?? [];
         }).Distinct().Select(speaker => speaker.ToLink<IHasVoiceTypeGetter>());
     }
 
@@ -461,7 +471,7 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
 
                 break;
             case IGetIsVoiceTypeConditionDataGetter isVoiceType:
-                if (isVoiceType.VoiceTypeOrList.UsesLink() && isVoiceType.VoiceTypeOrList.Link.TryResolve(_formLinkCache, out var voiceTypeRecord))
+                if (isVoiceType.VoiceTypeOrList.Link.TryResolve(_formLinkCache, out var voiceTypeRecord))
                 {
                     switch (voiceTypeRecord)
                     {
@@ -470,8 +480,7 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
                         case IFormListGetter formList:
                             return new VoiceContainer(formList.Items
                                 .Where(link => _formLinkCache.TryResolveIdentifier(link, out var _))
-                                .Select(voice => voice.FormKey)
-                                .ToHashSet());
+                                .Select(voice => voice.FormKey));
                     }
                 }
 

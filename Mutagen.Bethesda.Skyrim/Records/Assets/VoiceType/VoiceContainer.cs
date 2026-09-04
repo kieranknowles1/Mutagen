@@ -62,7 +62,7 @@ public class VoiceContainer : ICloneable, IEquatable<VoiceContainer>
     {
         foreach (var voiceType in voiceTypes)
         {
-            _voices.Add(voiceType, []);
+            _voices.TryAdd(voiceType, []);
         }
     }
     #endregion
