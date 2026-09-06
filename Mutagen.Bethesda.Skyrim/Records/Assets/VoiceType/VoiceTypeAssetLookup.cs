@@ -34,7 +34,6 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
     private readonly Dictionary<FormKey, HashSet<FormKey>> _keywordNPCs = new();
     private readonly Dictionary<MaleFemaleGender, HashSet<FormKey>> _genderNPCs = new();
     private HashSet<FormKey> _childNPCs = null!;
-    private readonly Dictionary<FormKey, HashSet<FormKey>> _sharedInfoUsages = new();
 
     //Caches
     private readonly object _questCacheLock = new();
@@ -117,17 +116,6 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
             }
         }
 
-        // TODO: Use usage cache for this
-        foreach (var response in _formLinkCache.WinningOverrides<IDialogResponsesGetter>())
-        {
-            if (!response.ResponseData.IsNull)
-            {
-                _sharedInfoUsages
-                    .GetOrAdd(response.ResponseData.FormKey)
-                    .Add(response.FormKey);
-            }
-        }
-
         foreach (var talkingActivator in _formLinkCache.WinningOverrides<ITalkingActivatorGetter>())
         {
             if (!talkingActivator.Voice.IsNull)
@@ -170,7 +158,7 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
         if (response.Responses.All(r => !r.Sound.IsNull)) return new VoiceContainer();
 
         //If this is a shared info and it's not used, return no voices
-        if (topic.Subtype == DialogTopic.SubtypeEnum.SharedInfo && !_sharedInfoUsages.ContainsKey(response.FormKey)) return new VoiceContainer();
+        if (topic.Subtype == DialogTopic.SubtypeEnum.SharedInfo && !GetSharedInfoUsages(response).Any()) return new VoiceContainer();
 
         //Get quest voices
         var questVoices = GetQuestVoices(topic, quest);
@@ -325,26 +313,21 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
         return voices;
     }
 
+    private IEnumerable<IDialogResponsesGetter> GetSharedInfoUsages(IDialogResponsesGetter responses)
+    {
+        return _usageCache.GetUsagesOf<IDialogResponsesGetter>(responses).UsageLinks
+            .Select(u => u.Resolve(_formLinkCache)).Where(r => r.ResponseData.Equals(responses));
+    }
+
     private void LimitVoicesToSharedInfoUsages(VoiceContainer voices, IDialogTopicGetter topic, IDialogResponsesGetter responses) {
-        if (topic.Subtype == DialogTopic.SubtypeEnum.SharedInfo && _sharedInfoUsages.TryGetValue(responses.FormKey, out var responseFormKeys))
-        {
-            var userConditions = responseFormKeys
-                .Select(responseKey =>
-                {
-                    var responseContext = _formLinkCache.ResolveSimpleContext<IDialogResponsesGetter>(responseKey);
-                    if (responseContext is not { Parent.Record: not null }) return null;
+        if (topic.Subtype != DialogTopic.SubtypeEnum.SharedInfo)
+            return;
 
-                    if (!responseContext.TryGetParent<IDialogTopicGetter>(out var currentTopic)) return null;
-                    var currentQuest = currentTopic.Quest.TryResolve(_formLinkCache);
-                    if (currentQuest == null) return null;
-
-                    return GetVoices(responseContext.Record.Conditions, currentQuest);
-                })
-                .WhereNotNull()
-                .MergeInsert(true);
-
-            voices.IntersectWith(userConditions);
-        }
+        // Union of all user speakers
+        var userConditions = GetSharedInfoUsages(responses)
+            .Select(GetVoiceContainer)
+            .MergeInsert(true);
+        voices.IntersectWith(userConditions);
     }
 
     private VoiceContainer GetQuestVoices(IDialogTopicGetter topic, IQuestGetter quest)
