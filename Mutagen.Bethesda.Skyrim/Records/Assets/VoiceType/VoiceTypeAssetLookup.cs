@@ -477,7 +477,6 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
             case IGetInFactionConditionDataGetter getInFaction:
                 if (getInFaction.Faction.UsesLink() && _factionNPCs.TryGetValue(getInFaction.Faction.Link.FormKey, out var factionNpcFormKeys))
                 {
-                    // TODO: Would passing lookup directly (probably via an interface) be faster?
                     return new VoiceContainer(factionNpcFormKeys, GetVoiceTypes);
                 }
 
@@ -527,7 +526,6 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
 
                 break;
             case IIsChildConditionDataGetter isChild:
-                // TODO: Maybe pre build container here
                 return new VoiceContainer(_childNPCs, GetVoiceTypes);
             default:
                 // Condition not intended to filter
@@ -771,6 +769,9 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
         return link.FormKey;
     }
 
+    // Getters for inheritable speaker data
+    // Other than voice types, results are used only during prep, so do not need to be distinct or efficiently reusable
+
     private HashSet<FormKey> GetVoiceTypes(INpcGetter npc)
     {
         return GetInheritedData<FormKey>(npc, NpcConfiguration.TemplateFlag.Traits, entry => {
@@ -785,37 +786,34 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
         }).ToHashSet();
     }
 
-    private HashSet<IFormLinkGetter<IFactionGetter>> GetFactions(INpcSpawnGetter npc)
+    private IEnumerable<IFormLinkGetter<IFactionGetter>> GetFactions(INpcSpawnGetter npc)
     {
-        return GetInheritedData(npc, NpcConfiguration.TemplateFlag.Factions, entry => entry.Factions.Select(f => f.Faction)).ToHashSet();
+        return GetInheritedData(npc, NpcConfiguration.TemplateFlag.Factions, entry => entry.Factions.Select(f => f.Faction));
     }
 
-    private HashSet<IFormLinkGetter<IClassGetter>> GetClasses(INpcSpawnGetter npc)
+    private IEnumerable<IFormLinkGetter<IClassGetter>> GetClasses(INpcSpawnGetter npc)
     {
         return GetInheritedData<IFormLinkGetter<IClassGetter>>(npc, NpcConfiguration.TemplateFlag.Stats, entry => [entry.Class])
-            .Where(c => !c.IsNull)
-            .ToHashSet();
+            .Where(c => !c.IsNull);
     }
 
-    private HashSet<MaleFemaleGender> GetGenders(INpcSpawnGetter npc)
+    private IEnumerable<MaleFemaleGender> GetGenders(INpcSpawnGetter npc)
     {
-        return GetInheritedData<MaleFemaleGender>(npc, NpcConfiguration.TemplateFlag.Traits, entry => [entry.Configuration.Flags.HasFlag(NpcConfiguration.Flag.Female) ? MaleFemaleGender.Female : MaleFemaleGender.Male])
-            // TODO: HashSet is overkill
-            .ToHashSet();
+        // TODO: Could this early return if Male && Female?
+        return GetInheritedData<MaleFemaleGender>(npc, NpcConfiguration.TemplateFlag.Traits, entry => [entry.Configuration.Flags.HasFlag(NpcConfiguration.Flag.Female) ? MaleFemaleGender.Female : MaleFemaleGender.Male]);
 
     }
 
-    private HashSet<IFormLinkGetter<IRaceGetter>> GetRaces(INpcSpawnGetter npc)
+    private IEnumerable<IFormLinkGetter<IRaceGetter>> GetRaces(INpcSpawnGetter npc)
     {
         return GetInheritedData<IFormLinkGetter<IRaceGetter>>(npc, NpcConfiguration.TemplateFlag.Traits, entry => [entry.Race])
-            .Where(r => !r.IsNull)
-            .ToHashSet();
+            .Where(r => !r.IsNull);
     }
 
-    private HashSet<IFormLinkGetter<IKeywordGetter>> GetKeywords(INpcSpawnGetter npc)
+    private IEnumerable<IFormLinkGetter<IKeywordGetter>> GetKeywords(INpcSpawnGetter npc)
     {
         var direct = GetInheritedData(npc, NpcConfiguration.TemplateFlag.Keywords, entry => entry.Keywords ?? []);
         var race = GetInheritedData(npc, NpcConfiguration.TemplateFlag.Traits, entry => entry.Race.TryResolve(_formLinkCache)?.Keywords ?? []);
-        return direct.And(race).ToHashSet();
+        return direct.And(race);
     }
 }
