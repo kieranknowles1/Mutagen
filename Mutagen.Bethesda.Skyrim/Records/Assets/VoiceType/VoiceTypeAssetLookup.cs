@@ -2,6 +2,7 @@ using Mutagen.Bethesda.Assets;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Assets;
 using Mutagen.Bethesda.Plugins.Cache;
+using Mutagen.Bethesda.Plugins.Cache.Internals.Implementations;
 using Mutagen.Bethesda.Plugins.Records;
 using Noggog;
 namespace Mutagen.Bethesda.Skyrim.Records.Assets.VoiceType;
@@ -18,11 +19,14 @@ namespace Mutagen.Bethesda.Skyrim.Records.Assets.VoiceType;
 public class VoiceTypeAssetLookup : IAssetCacheComponent
 {
     private ILinkCache _formLinkCache = null!;
+    private ILinkUsageCache _usageCache = null!;
 
     //Databases
     private HashSet<FormKey> _allVoiceTypes = null!;
-    // TODO: This is probably unnecessary. Leave optimisation for its own PR.
     // Kept as enumerable as most unique NPCs have only one voice
+    // This is built eagarly as dynamically fetching voices for speakers would cause a 2
+    // order of magnitude slowdown for `GetIsRace`, `GetIsSex`, and `GetInFaction`, and enumerating
+    // all NPCs is already necessary for `GetIsVoiceType`
     private readonly Dictionary<FormKey, IEnumerable<FormKey>> _speakerVoices = new();
     private readonly Dictionary<FormKey, HashSet<FormKey>> _factionNPCs = new();
     private readonly Dictionary<FormKey, HashSet<FormKey>> _classNPCs = new();
@@ -30,7 +34,6 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
     private readonly Dictionary<FormKey, HashSet<FormKey>> _keywordNPCs = new();
     private readonly Dictionary<MaleFemaleGender, HashSet<FormKey>> _genderNPCs = new();
     private HashSet<FormKey> _childNPCs = null!;
-    private readonly Dictionary<FormKey, int> _dialogueSceneAliasIndex = new();
     private readonly Dictionary<FormKey, HashSet<FormKey>> _sharedInfoUsages = new();
 
     //Caches
@@ -41,9 +44,13 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
     // TODO: Would this be faster with links? Would mean distinct comparison also needs to use links
     private readonly Dictionary<FormKey, List<FormKey>> _voiceSpeakers = [];
 
-    public void Prep(IAssetLinkCache linkCache)
+    [Obsolete("Provide usage cache for better performance")]
+    public void Prep(IAssetLinkCache linkCache) => Prep(linkCache, new ImmutableLoadOrderLinkUsageCache(linkCache.FormLinkCache));
+
+    public void Prep(IAssetLinkCache linkCache, ILinkUsageCache usageCache)
     {
         _formLinkCache = linkCache.FormLinkCache;
+        _usageCache = usageCache;
 
         // TODO: Much of this could be lazy
         foreach (var quest in _formLinkCache.WinningOverrides<IQuestGetter>())
@@ -125,18 +132,6 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
         {
             if (!talkingActivator.Voice.IsNull)
                 _speakerVoices.Add(talkingActivator.FormKey, [talkingActivator.Voice.FormKey]);
-        }
-
-        // TODO: Use usage cache for this
-        foreach (var scene in _formLinkCache.WinningOverrides<ISceneGetter>())
-        {
-            foreach (var action in scene.Actions)
-            {
-                if (action.Type == SceneAction.TypeEnum.Dialog && !action.Topic.IsNull && action.ActorID != null && !_dialogueSceneAliasIndex.ContainsKey(action.Topic.FormKey))
-                {
-                    _dialogueSceneAliasIndex.Add(action.Topic.FormKey, action.ActorID.Value);
-                }
-            }
         }
 
         // Build caches
@@ -393,6 +388,14 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
         return (questString, topicString);
     }
 
+    private int? GetSceneAliasIndex(IDialogTopicGetter topic)
+    {
+        return _usageCache.GetUsagesOf<ISceneGetter>(topic).UsageLinks
+            .Select(u => u.Resolve(_formLinkCache))
+            .SelectMany(scene => scene.Actions)
+            .First(action => action.Topic.Equals(topic))?.ActorID;
+    }
+
     private VoiceContainer GetVoices(IDialogTopicGetter topic, IDialogResponsesGetter response, IQuestGetter quest)
     {
         var voices = new VoiceContainer(true);
@@ -401,9 +404,11 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
         if (!response.Speaker.IsNull) return GetVoices(response.Speaker.FormKey);
 
         //Check scene
-        if (topic.Category == DialogTopic.CategoryEnum.Scene && _dialogueSceneAliasIndex.TryGetValue(topic.FormKey, out var aliasIndex))
+        if (topic.Category == DialogTopic.CategoryEnum.Scene)
         {
-            voices.IntersectWith(GetVoices(quest, aliasIndex));
+            var aliasIndex = GetSceneAliasIndex(topic);
+            if (aliasIndex != null)
+                voices.IntersectWith(GetVoices(quest, aliasIndex.Value));
         }
 
         //Search conditions

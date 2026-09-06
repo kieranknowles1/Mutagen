@@ -176,6 +176,14 @@ public class VoiceTypeAssetLookupBenchmark
         sceneTopic.Quest.SetTo(quest);
         sceneTopic.Category = DialogTopic.CategoryEnum.Scene;
         sceneTopic.Subtype = DialogTopic.SubtypeEnum.Scene;
+
+        // Add a few extra actions to search through
+        // No impact on baseline since this wasn't used on the SceneAlias codepath previously
+        for (int i = 0; i < 32; i++)
+        {
+            scene.Actors.Add(new() { });
+        }
+
         scene.Actions.Add(new()
         {
             Type = SceneAction.TypeEnum.Dialog,
