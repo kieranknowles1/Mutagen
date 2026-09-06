@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using Mutagen.Bethesda.Assets;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Assets;
@@ -5,6 +6,7 @@ using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Cache.Internals.Implementations;
 using Mutagen.Bethesda.Plugins.Records;
 using Noggog;
+using static Mutagen.Bethesda.Skyrim.Furniture;
 namespace Mutagen.Bethesda.Skyrim.Records.Assets.VoiceType;
 
 /// <summary>
@@ -741,22 +743,28 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
         return _speakerVoices.GetOrDefault(speaker) ?? [];
     }
 
-    private IEnumerable<T> GetInheritedData<T>(INpcSpawnGetter spawn, NpcConfiguration.TemplateFlag inheritFlag, Func<INpcGetter, IEnumerable<T>> getter)
+    /// <summary>
+    /// Enumerate all source NPCs for the given template flag. Only includes the bottom level of the tree to match runtime behaviour
+    /// </summary>
+    /// <param name="spawn"></param>
+    /// <param name="inheritFlag"></param>
+    /// <returns></returns>
+    private IEnumerable<INpcGetter> WalkInheritedSources(INpcSpawnGetter spawn, NpcConfiguration.TemplateFlag inheritFlag)
     {
         switch (spawn)
         {
             case INpcGetter npc:
                 if (npc.Configuration.TemplateFlags.HasFlag(inheritFlag) && npc.Template.TryResolve(_formLinkCache, out var template))
-                    return GetInheritedData(template, inheritFlag, getter);
+                    return WalkInheritedSources(template, inheritFlag);
                 else
-                    return getter(npc);
+                    return [npc];
             case ILeveledNpcGetter leveledNpc:
                 if (leveledNpc.Entries == null) return [];
 
                 return leveledNpc.Entries
                     .Select(e => e.Data?.Reference?.TryResolve(_formLinkCache))
                     .WhereNotNull()
-                    .SelectMany(e => GetInheritedData(e, inheritFlag, getter));
+                    .SelectMany(e => WalkInheritedSources(e, inheritFlag));
             default: return [];
         }
     }
@@ -774,46 +782,82 @@ public class VoiceTypeAssetLookup : IAssetCacheComponent
 
     private HashSet<FormKey> GetVoiceTypes(INpcGetter npc)
     {
-        return GetInheritedData<FormKey>(npc, NpcConfiguration.TemplateFlag.Traits, entry => {
+        // TODO: Could this avoid hash set for single-voice NPCs?
+        var result = new HashSet<FormKey>();
+        foreach (var entry in WalkInheritedSources(npc, NpcConfiguration.TemplateFlag.Traits))
+        {
             if (!entry.Voice.IsNull)
-                return [entry.Voice.FormKey];
+                result.Add(entry.Voice.FormKey);
             else
             {
                 var defaultVoice = GetDefaultVoice(npc.Race, npc.Configuration.Flags.HasFlag(NpcConfiguration.Flag.Female));
-                return defaultVoice.IsNull ? [] : [defaultVoice];
+                if (!defaultVoice.IsNull)
+                    result.Add(defaultVoice);
             }
-            // TODO: Could this avoid hash set for single-voice NPCs?
-        }).ToHashSet();
+        }
+        return result;
     }
 
     private IEnumerable<IFormLinkGetter<IFactionGetter>> GetFactions(INpcSpawnGetter npc)
     {
-        return GetInheritedData(npc, NpcConfiguration.TemplateFlag.Factions, entry => entry.Factions.Select(f => f.Faction));
+        foreach (var entry in WalkInheritedSources(npc, NpcConfiguration.TemplateFlag.Factions))
+        {
+            foreach (var faction in entry.Factions)
+                yield return faction.Faction;
+        }
     }
 
     private IEnumerable<IFormLinkGetter<IClassGetter>> GetClasses(INpcSpawnGetter npc)
     {
-        return GetInheritedData<IFormLinkGetter<IClassGetter>>(npc, NpcConfiguration.TemplateFlag.Stats, entry => [entry.Class])
-            .Where(c => !c.IsNull);
+        foreach (var entry in WalkInheritedSources(npc, NpcConfiguration.TemplateFlag.Stats))
+        {
+            if (!entry.Class.IsNull)
+                yield return entry.Class;
+        }
     }
 
     private IEnumerable<MaleFemaleGender> GetGenders(INpcSpawnGetter npc)
     {
         // TODO: Could this early return if Male && Female?
-        return GetInheritedData<MaleFemaleGender>(npc, NpcConfiguration.TemplateFlag.Traits, entry => [entry.Configuration.Flags.HasFlag(NpcConfiguration.Flag.Female) ? MaleFemaleGender.Female : MaleFemaleGender.Male]);
+        foreach (var entry in WalkInheritedSources(npc, NpcConfiguration.TemplateFlag.Traits))
+        {
+            yield return entry.Configuration.Flags.HasFlag(NpcConfiguration.Flag.Female) ? MaleFemaleGender.Female : MaleFemaleGender.Male;
+        }
 
     }
 
     private IEnumerable<IFormLinkGetter<IRaceGetter>> GetRaces(INpcSpawnGetter npc)
     {
-        return GetInheritedData<IFormLinkGetter<IRaceGetter>>(npc, NpcConfiguration.TemplateFlag.Traits, entry => [entry.Race])
-            .Where(r => !r.IsNull);
+        foreach (var entry in WalkInheritedSources(npc, NpcConfiguration.TemplateFlag.Traits))
+        {
+            if (!entry.Race.IsNull)
+                yield return entry.Race;
+        }
     }
 
     private IEnumerable<IFormLinkGetter<IKeywordGetter>> GetKeywords(INpcSpawnGetter npc)
     {
-        var direct = GetInheritedData(npc, NpcConfiguration.TemplateFlag.Keywords, entry => entry.Keywords ?? []);
-        var race = GetInheritedData(npc, NpcConfiguration.TemplateFlag.Traits, entry => entry.Race.TryResolve(_formLinkCache)?.Keywords ?? []);
-        return direct.And(race);
+        foreach (var entry in WalkInheritedSources(npc, NpcConfiguration.TemplateFlag.Keywords))
+        {
+            if (entry.Keywords != null)
+            {
+                foreach (var keyword in entry.Keywords)
+                    yield return keyword;
+            }
+        }
+
+        foreach (var entry in WalkInheritedSources(npc, NpcConfiguration.TemplateFlag.Traits))
+        {
+            if (entry.Race.TryResolve(_formLinkCache, out var race))
+            {
+                if (race.Keywords != null)
+                {
+                    foreach (var keyword in race.Keywords)
+                    {
+                        yield return keyword;
+                    }
+                }
+            }
+        }
     }
 }
